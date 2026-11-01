@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: satuklik-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

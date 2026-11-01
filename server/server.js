@@ -1,17 +1,17 @@
 // satuklik — server (Node 18+). Login: Firebase Auth. Data: Firestore. Upload: YouTube, Instagram, TikTok, Facebook, Threads.
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),{pipeline,Transform}=require('stream');
 const PL=require('./platforms');
-const PORT=process.env.PORT||3000,ROOT=path.join(__dirname,'..','public'),DATA=process.env.DATA_DIR||path.join(__dirname,'data'),UP=path.join(DATA,'uploads');
+const PORT=process.env.PORT||3000,ROOT=path.join(__dirname,'..'),DATA=process.env.DATA_DIR||'/tmp/satuklik-data',UP=path.join(DATA,'uploads');
 const TEST=process.env.AUTH_MODE==='test',DEMO=process.env.DEMO_PAY==='1',PUBLIC=(process.env.PUBLIC_URL||'').replace(/\/$/,''),MAXB=(+process.env.MAX_MB||512)*1048576;
 const ADM=(process.env.ADMIN_EMAILS||'').toLowerCase().split(',').map(x=>x.trim()).filter(Boolean);
 if(TEST&&process.env.NODE_ENV==='production'){console.error('AUTH_MODE=test tidak boleh dipakai di produksi.');process.exit(1)}
-fs.mkdirSync(DATA,{recursive:true});fs.rmSync(UP,{recursive:true,force:true});fs.mkdirSync(UP,{recursive:true});
-const st=require('./store')(TEST?'local':'firebase',DATA);
+fs.mkdirSync(UP,{recursive:true});
+const st=require('./store')('firebase',DATA);
 
 // Token platform disimpan terenkripsi (AES-256-GCM)
-const KF=path.join(DATA,'secret.key');let KEY;
-try{KEY=Buffer.from(fs.readFileSync(KF,'utf8'),'hex')}catch(e){KEY=crypto.randomBytes(32);fs.writeFileSync(KF,KEY.toString('hex'),{mode:0o600})}
-if(process.env.SECRET_KEY)KEY=Buffer.from(process.env.SECRET_KEY,'hex');
+let KEY;
+if(!process.env.SECRET_KEY||!/^[0-9a-f]{64}$/i.test(process.env.SECRET_KEY))throw new Error('SECRET_KEY wajib diatur sebagai 64 karakter hex.');
+KEY=Buffer.from(process.env.SECRET_KEY,'hex');
 const enc=t=>{const iv=crypto.randomBytes(12),c=crypto.createCipheriv('aes-256-gcm',KEY,iv),b=Buffer.concat([c.update(t,'utf8'),c.final()]);return Buffer.concat([iv,c.getAuthTag(),b]).toString('base64')};
 const dec=s=>{const b=Buffer.from(s,'base64'),d=crypto.createDecipheriv('aes-256-gcm',KEY,b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return Buffer.concat([d.update(b.subarray(28)),d.final()]).toString('utf8')};
 const sha=t=>crypto.createHash('sha256').update(t).digest('hex');
@@ -69,9 +69,17 @@ http.createServer(async(req,res)=>{
  try{
   const p=new URL(req.url,'http://x').pathname;
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','same-origin');
+  const origin=req.headers.origin,allowed=origin==='https://xiaomia5new-cloud.github.io';
+  if(allowed)res.setHeader('Access-Control-Allow-Origin',origin);
+  res.setHeader('Vary','Origin');
+  if(req.method==='OPTIONS'){
+   if(!allowed)return send(res,403,{error:'Origin ditolak'});
+   res.writeHead(204,{'Access-Control-Allow-Methods':'GET,POST,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type,X-Device,X-Filename','Access-Control-Max-Age':'86400'});return res.end()
+  }
   const mm=p.match(/^\/media\/([0-9a-f]{32})(\.\w+)$/);if(mm)return media(req,res,mm);
   if(!p.startsWith('/api/'))return stat(req,res,p);
-  if(req.method!=='GET'){const o=req.headers.origin;if(o&&new URL(o).host!==req.headers.host)return send(res,403,{error:'Origin ditolak'})}
+  if(origin&&!allowed)return send(res,403,{error:'Origin ditolak'});
+  if(p==='/api/health')return send(res,200,{ok:true});
   const dev=String(req.headers['x-device']||'').slice(0,64),u=await user(req);
   if(!u)return send(res,401,{error:'Belum masuk'});
   if(p==='/api/me')return send(res,200,{id:u.id,email:u.email,name:u.email.split('@')[0],admin:u.admin});
@@ -122,4 +130,4 @@ http.createServer(async(req,res)=>{
    fs.unlink(file,()=>{});UPL.delete(id);return send(res,200,{results})}
   send(res,404,{error:'Tidak ditemukan'})
  }catch(e){console.error(e);if(!res.headersSent)send(res,500,{error:'Kesalahan server'})}
-}).listen(PORT,()=>console.log('satuklik jalan di http://localhost:'+PORT+(TEST?' (MODE UJI)':'')));
+}).listen(PORT,'0.0.0.0',()=>console.log('satuklik API jalan pada port '+PORT));

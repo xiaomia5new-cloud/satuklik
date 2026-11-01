@@ -1,61 +1,31 @@
 # satuklik
 
-Upload sekali, tayang di banyak platform. Login dan data memakai Firebase (Authentication + Firestore). Server Node 18+.
+Website statis di GitHub Pages, Node.js API terpisah, Authentication + data di Firebase / Firestore.
 
-```
-public/        situs (index.html, app.js, style.css, config.js)
-server/        server.js, store.js (Firestore), platforms.js (upload per platform)
-firestore.rules   tolak semua akses langsung dari klien
-test.js        tes otomatis (platform tiruan)
-```
+## Backend hosting (Render)
+1. Buat Firestore database pada project Firebase dan pastikan aturan `firestore.rules` tetap menolak akses langsung dari klien.
+2. Hubungkan repository ini ke Render sebagai Web Service dari `https://render.com/blueprint/new`; Render membaca `render.yaml`.
+3. Isi environment variables di Render (bukan di GitHub):
+   - `FIREBASE_SERVICE_ACCOUNT_JSON`: seluruh JSON service account Firebase Admin SDK (project `satuklik-e0ed2`).
+   - `ADMIN_EMAILS`: email admin terverifikasi, mis. `xiaomia5new@gmail.com`.
+   - `PUBLIC_URL`: URL service Render, mis. `https://satuklik-api.onrender.com` (pakai URL yang benar-benar diberikan Render).
+   - `SECRET_KEY` dibuat otomatis oleh blueprint; jangan diubah setelah pengguna menyimpan token platform terenkripsi.
+4. Setelah service berstatus live, tes `https://<alamat-service>/api/health`; hasil yang diharapkan `{"ok":true}`.
+5. Masukkan alamat service tersebut ke `api` di `config.js`, commit perubahan itu, lalu tunggu GitHub Pages terbit ulang.
 
-## Setup Firebase (sekali)
-1. Buat project di console.firebase.google.com.
-2. Authentication > Sign-in method: aktifkan **Email/Password** dan **Google**.
-3. Project settings > Your apps > tambah Web app. Salin `apiKey`, `authDomain`, `projectId`, `appId` ke blok `firebase` di `public/config.js`.
-4. Sign-in method > Google: salin **Web client ID** ke `googleClientId` di `public/config.js`.
-5. Authentication > Settings > Authorized domains: tambahkan domainmu.
-6. Firestore Database: buat database, lalu tempel isi `firestore.rules` di tab Rules.
-7. Project settings > Service accounts > Generate new private key. Simpan file JSON di server (bukan di `public/`, jangan di git).
+Jangan tempel kredensial service account di chat, repo, atau frontend. Ambil JSON dari Firebase Console > Project settings > Service accounts > Generate new private key dan simpan hanya sebagai environment variable privat di Render.
 
-## Jalankan
-```
-npm install
-GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json \
-ADMIN_EMAILS=emailmu@gmail.com \
-PUBLIC_URL=https://domainmu.com \
-DEMO_PAY=1 npm start
-```
-- `ADMIN_EMAILS`: email admin (harus terverifikasi, mis. login Google). Admin membuat kunci, reset perangkat, dan mencabut kunci di halaman Admin.
-- `PUBLIC_URL`: alamat https publik situs. **Wajib** untuk Instagram, Threads, dan Facebook karena platform mengambil video lewat URL. Alamat localhost tidak bisa.
-- `DEMO_PAY=1`: beli kunci tanpa bayar (uji coba). Matikan di produksi, sambungkan payment gateway ke `mkKey()` di `server.js`.
-- Opsional: `PORT`, `MAX_MB` (default 512), `SECRET_KEY` (hex 64 karakter untuk enkripsi token), `GRAPH_VERSION` (default v23.0, sesuaikan dengan versi Meta terbaru), `YT_PRIVACY` (default public).
-
-## Alur pengguna
-1. Masuk (Google atau email) lewat Firebase.
-2. Aktifkan kunci. Satu kunci terkunci ke satu perangkat; perangkat lain ditolak.
-3. Halaman API: tempel token tiap platform, server mengeceknya ke platform lalu statusnya Terhubung.
-4. Dasbor: pilih video, tulis caption, centang platform, klik Posting. Video diunggah ke server, lalu server mengirimnya ke tiap platform dan menampilkan hasil per platform.
-5. Kunci direset atau dicabut admin: perangkat lama keluar otomatis (dicek tiap 30 detik, dan server menolak permintaannya).
-
-## Token tiap platform
-| Platform | Token | Cara kirim |
-|---|---|---|
-| YouTube | access token OAuth, scope `youtube.upload` (API key biasa tidak bisa upload) | resumable upload |
-| Instagram | token Instagram Login atau token Facebook, akun Business/Creator | Reels lewat `video_url` |
-| Facebook | user atau page access token (halaman pertama dipakai) | `file_url` ke `/videos` |
-| Threads | token Threads | video lewat `video_url` |
-| TikTok | access token OAuth, scope `user.info.basic`, `video.publish` | FILE_UPLOAD (chunk) |
+## Setup Firebase
+- Authentication: aktifkan Email/Password dan Google; tambahkan domain GitHub Pages ke Authorized domains.
+- Firestore: buat database di lokasi pilihan dan terapkan `firestore.rules`.
+- Backend memakai Admin SDK, memverifikasi Firebase ID token yang diterima, dan menyimpan lisensi, pengguna, serta koneksi platform di Firestore.
 
 ## Penting
-- **Belum diuji dengan token asli.** Kode upload mengikuti dokumentasi API resmi dan lulus tes dengan platform tiruan, tapi belum pernah menembak server YouTube, Meta, atau TikTok. Uji satu per satu dengan akun sendiri.
-- YouTube, TikTok, dan Instagram bisa meminta audit/review aplikasi. Sebelum lolos, video bisa dipaksa privat atau ditolak.
-- Token OAuth biasanya kedaluwarsa. Penyegaran otomatis (refresh token) belum ada; pengguna menempel token baru.
-- Firebase belum diuji dengan project asli (adaptor Firestore diuji dengan tiruan). Server menolak mulai bila kredensial Firebase tidak ada.
-- Gunakan HTTPS di produksi. Header CSP sudah diatur untuk Firebase Auth REST dan Google Identity.
+- Upload video tetap sementara di disk service selama proses posting (bukan Firestore/Storage); hapus setelah selesai. Free hosting dapat sleep/berbatasan kapasitas, dan unggahan besar mungkin perlu batas lebih rendah atau Storage.
+- Lisensi, koneksi platform, dan token terenkripsi tersimpan di Firestore. Token platform dienkripsi memakai `SECRET_KEY`.
+- Pembelian berbayar belum tersambung; jangan aktifkan `DEMO_PAY` di produksi.
+- Integrasi posting belum diuji dengan token asli; uji per platform dengan akun sendiri.
+- `AUTH_MODE=test` hanya untuk tes lokal, tidak untuk produksi.
 
-## Tes
-`npm test` (tanpa Firebase asli, memakai `AUTH_MODE=test`; jangan dipakai di produksi).
-
-## Endpoint
-`GET /api/me`, `GET /api/license`, `POST /api/license/activate|buy`, `GET /api/connections`, `POST|DELETE /api/connect/:platform`, `POST /api/upload` (video mentah), `POST /api/post`, `GET|POST /api/admin/licenses`, `POST /api/admin/licenses/:id/reset|revoke|restore`. Semua memakai header `Authorization: Bearer <Firebase ID token>`.
+## Tes lokal
+`npm install && npm test`
