@@ -1,3 +1,5 @@
 # satuklik on GitHub Pages
 
-Static frontend published from the supplied ZIP. The Node.js backend is not included because GitHub Pages only serves static files; login, licenses, and API connections require a separate backend host.
+Firebase Authentication is wired into the static frontend. Add the Firebase Web App config in `config.js`; enable Email/Password and Google providers as desired, and authorize `xiaomia5new-cloud.github.io` in Firebase Authentication settings.
+
+GitHub Pages only serves static files. Existing license, admin, API-token storage, and publishing features still require a separately hosted backend; Firebase login alone does not replace those APIs or secure those operations.

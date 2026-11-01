@@ -4,7 +4,7 @@ const P=['YouTube','Instagram','TikTok','Facebook','Threads'];P.forEach(p=>sel.a
 const DEV=(()=>{try{let d=localStorage.getItem('sk_dev');if(!d){d=crypto.randomUUID();localStorage.setItem('sk_dev',d)}return d}catch(e){return'tmp-'+Math.random().toString(36).slice(2)}})();
 const say=(id,t,ok)=>{const e=$(id);e.textContent=t;e.style.color=ok?'#16a34a':'#dc2626'};
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function rq(path,body,method){const r=await fetch((CFG.api||'')+path,{method:method||(body?'POST':'GET'),credentials:'include',headers:{'Content-Type':'application/json','X-Device':DEV},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(r.status===401&&UID&&!path.startsWith('/api/auth/'))autoOut('Kamu keluar otomatis: sesi berakhir atau kunci dipakai di perangkat lain.');if(!r.ok)throw new Error(d.error||'Gagal ('+r.status+')');return d}
+async function rq(path,body,method){const r=await fetch((CFG.api||'')+path,{method:method||(body?'POST':'GET'),credentials:'include',headers:{'Content-Type':'application/json','X-Device':DEV},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Gagal ('+r.status+')');return d}
 const MSG={perangkat:'Kunci ini sudah dipakai di perangkat lain. Satu kunci hanya untuk satu perangkat — minta admin untuk reset.',invalid:'Kunci tidak valid atau sudah dicabut.'};
 
 // Konten halaman
@@ -87,14 +87,22 @@ async function go(){
 
 // Keluar otomatis: cek lisensi tiap 30 dtk (server juga mengakhiri sesi lama saat kunci direset/dicabut)
 setInterval(()=>{if(UID&&!document.hidden)rq('/api/license').then(s=>{if(s.state==='perangkat'||s.state==='invalid'){rq('/api/auth/logout',{}).catch(()=>{});autoOut((MSG[s.state]||'')+' Kamu keluar otomatis.')}}).catch(()=>{})},30000);
-// ===== Sesi + login (server: /api/*) =====
-(async()=>{
- try{const m=await rq('/api/me');UID=String(m.id);NAME=m.name||m.email||'';OWN=!!m.admin}catch(e){}
- document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);document.title=CFG.brand+' — upload sekali, tayang di semua platform';
- document.querySelectorAll('.prv').forEach(e=>e.hidden=!UID);$('#adm').hidden=!OWN;
- if(UID){$('#cta').textContent='Dasbor';$('#cta').href='#dasbor';$('#who').textContent='Kamu sudah masuk sebagai '+NAME+'.';$('#out').hidden=false}
- addEventListener('hashchange',go);go()})();
-const lm=(t,ok)=>say('#lm',t,ok),done=()=>{lm('Berhasil masuk…',1);setTimeout(()=>{location.hash='dasbor';location.reload()},500)};
+// Firebase Authentication (frontend). Konfigurasi Web Firebase disediakan pemilik proyek.
+const firebaseReady=(async()=>{
+ const c=CFG.firebase||{};if(!c.apiKey||!c.authDomain||!c.projectId||!c.appId)throw new Error('Firebase belum dikonfigurasi. Masukkan Firebase Web App config di config.js.');
+ if(!window.firebase||!firebase.auth)throw new Error('Firebase SDK gagal dimuat. Periksa koneksi internet.');
+ if(!firebase.apps.length)firebase.initializeApp(c);return firebase.auth()})();
+window.SK_AUTH_READY=firebaseReady;
+document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);document.title=CFG.brand+' — upload sekali, tayang di semua platform';
+addEventListener('hashchange',go);
+firebaseReady.then(auth=>auth.onAuthStateChanged(user=>{
+ UID=user?user.uid:null;NAME=user?(user.displayName||user.email||''):'';OWN=false;
+ document.querySelectorAll('.prv').forEach(e=>e.hidden=!UID);$('#adm').hidden=true;
+ if(UID){$('#cta').textContent='Dasbor';$('#cta').href='#dasbor';$('#who').textContent='Kamu sudah masuk sebagai '+NAME+'.';$('#out').hidden=false}else{$('#cta').textContent='Masuk';$('#cta').href='#masuk';$('#out').hidden=true}
+ go();
+})).catch(e=>{document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);$('#lm').textContent=e.message;$('#lm').style.color='#dc2626';$('#in').hidden=true;$('#gate').hidden=false;addEventListener('hashchange',go);go()});
+const lm=(t,ok)=>say('#lm',t,ok),done=()=>{lm('Berhasil masuk…',1);setTimeout(()=>{location.hash='dasbor'},500)};
+const authError=e=>({ 'auth/invalid-credential':'Email atau password salah.','auth/email-already-in-use':'Email sudah terdaftar.','auth/weak-password':'Password terlalu lemah.','auth/too-many-requests':'Terlalu banyak percobaan. Coba lagi nanti.','auth/popup-closed-by-user':'Jendela Google ditutup sebelum selesai.','auth/unauthorized-domain':'Domain situs belum diizinkan di Firebase Authentication.' }[e.code]||e.message||'Autentikasi gagal.');
 let mode='in';
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$('#tc').hidden=mode==='in';$('#se').textContent=mode==='in'?'Masuk':'Daftar';$('#pw').autocomplete=mode==='in'?'current-password':'new-password';lm('')});
 $('#se').onclick=async()=>{
@@ -102,13 +110,12 @@ $('#se').onclick=async()=>{
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return lm('Email tidak valid.');
  if(pw.length<8)return lm('Password minimal 8 karakter.');
  if(mode==='up'&&!$('#ag').checked)return lm('Centang persetujuan Syarat dan Privasi.');
- try{lm('Memproses…',1);await rq(mode==='in'?'/api/auth/login':'/api/auth/register',{email,password:pw});done()}catch(e){lm(e.message)}};
-$('#fg').onclick=async()=>{const email=$('#em').value.trim();if(!email)return lm('Isi email dulu.');try{await rq('/api/auth/forgot',{email});lm('Jika email terdaftar, tautan reset sudah dikirim.',1)}catch(e){lm(e.message)}};
+ try{lm('Memproses…',1);const auth=await window.SK_AUTH_READY;if(mode==='in')await auth.signInWithEmailAndPassword(email,pw);else await auth.createUserWithEmailAndPassword(email,pw);done()}catch(e){lm(authError(e))}};
+$('#fg').onclick=async()=>{const email=$('#em').value.trim();if(!email)return lm('Isi email dulu.');try{const auth=await window.SK_AUTH_READY;await auth.sendPasswordResetEmail(email);lm('Jika email terdaftar, tautan reset sudah dikirim.',1)}catch(e){lm(authError(e))}};
 const gsi=()=>new Promise((ok,no)=>{if(window.google&&google.accounts)return ok();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.onload=ok;s.onerror=()=>no(new Error('Skrip Google tidak bisa dimuat.'));document.head.appendChild(s)});
 $('#gg').onclick=async()=>{
- if(!CFG.googleClientId)return lm('Login Google belum diatur: isi googleClientId di config.js.');
- try{await gsi();google.accounts.id.initialize({client_id:CFG.googleClientId,callback:async r=>{try{await rq('/api/auth/google',{credential:r.credential});done()}catch(e){lm(e.message)}}});google.accounts.id.prompt()}catch(e){lm(e.message)}};
-$('#out').onclick=async()=>{try{await rq('/api/auth/logout',{})}catch(e){}location.hash='masuk';location.reload()};
+ try{const auth=await window.SK_AUTH_READY;const provider=new firebase.auth.GoogleAuthProvider();await auth.signInWithPopup(provider);done()}catch(e){lm(authError(e))}};
+$('#out').onclick=async()=>{try{const auth=await window.SK_AUTH_READY;await auth.signOut()}catch(e){lm(authError(e))}location.hash='masuk'};
 
 // ===== Lisensi: 1 kunci = 1 perangkat (dicek server lewat header X-Device) =====
 $('#beli').onclick=async()=>{
