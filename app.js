@@ -4,7 +4,18 @@ const P=['YouTube','Instagram','TikTok','Facebook','Threads'];P.forEach(p=>sel.a
 const DEV=(()=>{try{let d=localStorage.getItem('sk_dev');if(!d){d=crypto.randomUUID();localStorage.setItem('sk_dev',d)}return d}catch(e){return'tmp-'+Math.random().toString(36).slice(2)}})();
 const say=(id,t,ok)=>{const e=$(id);e.textContent=t;e.style.color=ok?'#16a34a':'#dc2626'};
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function rq(path,body,method){const r=await fetch((CFG.api||'')+path,{method:method||(body?'POST':'GET'),credentials:'include',headers:{'Content-Type':'application/json','X-Device':DEV},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Gagal ('+r.status+')');return d}
+const FBC=CFG.firebase||{},FK=FBC.apiKey,IDT='https://identitytoolkit.googleapis.com/v1/';
+const FBERR={EMAIL_EXISTS:'Email sudah terdaftar.',INVALID_LOGIN_CREDENTIALS:'Email atau password salah.',INVALID_PASSWORD:'Email atau password salah.',EMAIL_NOT_FOUND:'Email atau password salah.',WEAK_PASSWORD:'Password terlalu lemah (min. 6 karakter).',TOO_MANY_ATTEMPTS_TRY_LATER:'Terlalu banyak percobaan. Coba lagi nanti.',INVALID_EMAIL:'Email tidak valid.',USER_DISABLED:'Akun dinonaktifkan.'};
+let AS=null;try{AS=JSON.parse(localStorage.getItem('sk_auth')||'null')}catch(e){}
+const saveAS=a=>{AS=a;try{a?localStorage.setItem('sk_auth',JSON.stringify(a)):localStorage.removeItem('sk_auth')}catch(e){}};
+const setAuth=d=>saveAS({idToken:d.idToken||d.id_token,refreshToken:d.refreshToken||d.refresh_token,exp:Date.now()+((+(d.expiresIn||d.expires_in))-60)*1000});
+async function fbq(ep,body){if(!FK)throw new Error('Firebase belum diatur: isi apiKey di config.js.');const r=await fetch(IDT+ep+'?key='+FK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(FBERR[String((d.error&&d.error.message)||'').split(' ')[0]]||'Gagal. Coba lagi.');return d}
+async function idToken(){if(!AS)return null;if(Date.now()>AS.exp){try{const r=await fetch('https://securetoken.googleapis.com/v1/token?key='+FK,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(AS.refreshToken)});const d=await r.json();if(!r.ok)throw 0;setAuth(d)}catch(e){saveAS(null);return null}}return AS.idToken}
+async function rq(path,body,method){
+ const t=await idToken(),r=await fetch((CFG.api||'')+path,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json','X-Device':DEV,...(t?{Authorization:'Bearer '+t}:{})},body:body?JSON.stringify(body):undefined}),d=await r.json().catch(()=>({}));
+ if(UID&&path!=='/api/me'&&(r.status===401||(r.status===403&&(d.code==='perangkat'||d.code==='invalid')))){saveAS(null);autoOut(r.status===401?'Sesi berakhir. Silakan masuk lagi.':(MSG[d.code]||'')+' Kamu keluar otomatis.')}
+ if(!r.ok)throw new Error(d.error||'Gagal ('+r.status+')');return d}
+function sendFile(f){return new Promise(async(ok,no)=>{const t=await idToken(),x=new XMLHttpRequest();x.open('POST',(CFG.api||'')+'/api/upload');x.setRequestHeader('Authorization','Bearer '+t);x.setRequestHeader('X-Device',DEV);x.setRequestHeader('X-Filename',encodeURIComponent(f.name));x.setRequestHeader('Content-Type',f.type||'video/mp4');x.upload.onprogress=e=>{if(e.lengthComputable){const k=Math.round(e.loaded/e.total*100);$('#up').textContent=k+'%';$('#ub').style.width=k+'%'}};x.onload=()=>{let d={};try{d=JSON.parse(x.responseText)}catch(e){}x.status<300?ok(d):no(new Error(d.error||'Gagal mengunggah ('+x.status+')'))};x.onerror=()=>no(new Error('Koneksi terputus saat mengunggah.'));x.send(f)})}
 const MSG={perangkat:'Kunci ini sudah dipakai di perangkat lain. Satu kunci hanya untuk satu perangkat — minta admin untuk reset.',invalid:'Kunci tidak valid atau sudah dicabut.'};
 
 // Konten halaman
@@ -86,23 +97,15 @@ async function go(){
  const s=$('[data-p="'+(S[r]?'doc':r)+'"]');s.hidden=false;s.classList.remove('pgin');void s.offsetWidth;s.classList.add('pgin');scrollTo(0,0);ov(0);reveal()}
 
 // Keluar otomatis: cek lisensi tiap 30 dtk (server juga mengakhiri sesi lama saat kunci direset/dicabut)
-setInterval(()=>{if(UID&&!document.hidden)rq('/api/license').then(s=>{if(s.state==='perangkat'||s.state==='invalid'){rq('/api/auth/logout',{}).catch(()=>{});autoOut((MSG[s.state]||'')+' Kamu keluar otomatis.')}}).catch(()=>{})},30000);
-// Firebase Authentication (frontend). Konfigurasi Web Firebase disediakan pemilik proyek.
-const firebaseReady=(async()=>{
- const c=CFG.firebase||{};if(!c.apiKey||!c.authDomain||!c.projectId||!c.appId)throw new Error('Firebase belum dikonfigurasi. Masukkan Firebase Web App config di config.js.');
- if(!window.firebase||!firebase.auth)throw new Error('Firebase SDK gagal dimuat. Periksa koneksi internet.');
- if(!firebase.apps.length)firebase.initializeApp(c);return firebase.auth()})();
-window.SK_AUTH_READY=firebaseReady;
-document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);document.title=CFG.brand+' — upload sekali, tayang di semua platform';
-addEventListener('hashchange',go);
-firebaseReady.then(auth=>auth.onAuthStateChanged(user=>{
- UID=user?user.uid:null;NAME=user?(user.displayName||user.email||''):'';OWN=false;
- document.querySelectorAll('.prv').forEach(e=>e.hidden=!UID);$('#adm').hidden=true;
- if(UID){$('#cta').textContent='Dasbor';$('#cta').href='#dasbor';$('#who').textContent='Kamu sudah masuk sebagai '+NAME+'.';$('#out').hidden=false}else{$('#cta').textContent='Masuk';$('#cta').href='#masuk';$('#out').hidden=true}
- go();
-})).catch(e=>{document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);$('#lm').textContent=e.message;$('#lm').style.color='#dc2626';$('#in').hidden=true;$('#gate').hidden=false;addEventListener('hashchange',go);go()});
-const lm=(t,ok)=>say('#lm',t,ok),done=()=>{lm('Berhasil masuk…',1);setTimeout(()=>{location.hash='dasbor'},500)};
-const authError=e=>({ 'auth/invalid-credential':'Email atau password salah.','auth/email-already-in-use':'Email sudah terdaftar.','auth/weak-password':'Password terlalu lemah.','auth/too-many-requests':'Terlalu banyak percobaan. Coba lagi nanti.','auth/popup-closed-by-user':'Jendela Google ditutup sebelum selesai.','auth/unauthorized-domain':'Domain situs belum diizinkan di Firebase Authentication.' }[e.code]||e.message||'Autentikasi gagal.');
+setInterval(()=>{if(UID&&!document.hidden)rq('/api/license').then(s=>{if(s.state==='perangkat'||s.state==='invalid'){saveAS(null);autoOut((MSG[s.state]||'')+' Kamu keluar otomatis.')}}).catch(()=>{})},30000);
+// ===== Sesi + login (server: /api/*) =====
+(async()=>{
+ try{const m=await rq('/api/me');UID=String(m.id);NAME=m.name||m.email||'';OWN=!!m.admin}catch(e){}
+ document.querySelectorAll('.brand').forEach(a=>a.lastChild.textContent=CFG.brand);document.title=CFG.brand+' — upload sekali, tayang di semua platform';
+ document.querySelectorAll('.prv').forEach(e=>e.hidden=!UID);$('#adm').hidden=!OWN;
+ if(UID){$('#cta').textContent='Dasbor';$('#cta').href='#dasbor';$('#who').textContent='Kamu sudah masuk sebagai '+NAME+'.';$('#out').hidden=false}
+ addEventListener('hashchange',go);go()})();
+const lm=(t,ok)=>say('#lm',t,ok),done=()=>{lm('Berhasil masuk…',1);setTimeout(()=>{location.hash='dasbor';location.reload()},500)};
 let mode='in';
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$('#tc').hidden=mode==='in';$('#se').textContent=mode==='in'?'Masuk':'Daftar';$('#pw').autocomplete=mode==='in'?'current-password':'new-password';lm('')});
 $('#se').onclick=async()=>{
@@ -110,12 +113,13 @@ $('#se').onclick=async()=>{
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return lm('Email tidak valid.');
  if(pw.length<8)return lm('Password minimal 8 karakter.');
  if(mode==='up'&&!$('#ag').checked)return lm('Centang persetujuan Syarat dan Privasi.');
- try{lm('Memproses…',1);const auth=await window.SK_AUTH_READY;if(mode==='in')await auth.signInWithEmailAndPassword(email,pw);else await auth.createUserWithEmailAndPassword(email,pw);done()}catch(e){lm(authError(e))}};
-$('#fg').onclick=async()=>{const email=$('#em').value.trim();if(!email)return lm('Isi email dulu.');try{const auth=await window.SK_AUTH_READY;await auth.sendPasswordResetEmail(email);lm('Jika email terdaftar, tautan reset sudah dikirim.',1)}catch(e){lm(authError(e))}};
+ try{lm('Memproses…',1);setAuth(await fbq(mode==='in'?'accounts:signInWithPassword':'accounts:signUp',{email,password:pw,returnSecureToken:true}));done()}catch(e){lm(e.message)}};
+$('#fg').onclick=async()=>{const email=$('#em').value.trim();if(!email)return lm('Isi email dulu.');try{await fbq('accounts:sendOobCode',{requestType:'PASSWORD_RESET',email});lm('Jika email terdaftar, tautan reset sudah dikirim.',1)}catch(e){lm(e.message)}};
 const gsi=()=>new Promise((ok,no)=>{if(window.google&&google.accounts)return ok();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.onload=ok;s.onerror=()=>no(new Error('Skrip Google tidak bisa dimuat.'));document.head.appendChild(s)});
 $('#gg').onclick=async()=>{
- try{const auth=await window.SK_AUTH_READY;const provider=new firebase.auth.GoogleAuthProvider();await auth.signInWithPopup(provider);done()}catch(e){lm(authError(e))}};
-$('#out').onclick=async()=>{try{const auth=await window.SK_AUTH_READY;await auth.signOut()}catch(e){lm(authError(e))}location.hash='masuk'};
+ if(!CFG.googleClientId)return lm('Login Google belum diatur: isi googleClientId di config.js.');
+ try{await gsi();google.accounts.id.initialize({client_id:CFG.googleClientId,callback:async r=>{try{setAuth(await fbq('accounts:signInWithIdp',{postBody:'id_token='+encodeURIComponent(r.credential)+'&providerId=google.com',requestUri:location.origin,returnIdpCredential:true,returnSecureToken:true}));done()}catch(e){lm(e.message)}}});google.accounts.id.prompt()}catch(e){lm(e.message)}};
+$('#out').onclick=()=>{saveAS(null);location.hash='masuk';location.reload()};
 
 // ===== Lisensi: 1 kunci = 1 perangkat (dicek server lewat header X-Device) =====
 $('#beli').onclick=async()=>{
@@ -154,9 +158,16 @@ function tl(){
 $('#tl').onclick=e=>{const t=e.target.closest('.t');if(!t||busy)return;const n=t.dataset.n;sel.has(n)?sel.delete(n):sel.add(n);tl()};
 $('#vf').onchange=e=>{const f=e.target.files[0];if(f)$('#vn').textContent=f.name+' · '+(f.size/1048576).toFixed(1)+' MB'};
 $('#go').onclick=async()=>{
- if(!$('#vf').files[0]){say('#pm','Pilih video dulu.');return}
- say('#pm','');busy=1;tl();const L=[...sel];
- $('#log').innerHTML=L.map(p=>'<div class="lr"><span>'+p+'</span><em id="e-'+p+'">'+(CONN[p]?'API terhubung':'mode demo')+'</em><div class="bar"><i id="b-'+p+'"></i></div></div>').join('');
- // ★ Posting nyata: ganti simulasi ini dengan POST /api/post di servermu (token tersimpan terenkripsi per akun)
- await Promise.all(L.map(async p=>{const T=1600+Math.random()*2200,s=performance.now();for(let k=0;k<1;){k=Math.min(1,(performance.now()-s)/T);$('#b-'+p).style.width=k*100+'%';await wait(60)}$('#e-'+p).textContent='Tayang'}));
- busy=0;tl();say('#pm','Berhasil Terkirim! Tayang di '+L.length+' akun sosmedmu',1)};
+ const f=$('#vf').files[0];if(!f){say('#pm','Pilih video dulu.');return}
+ const L=[...sel].filter(p=>CONN[p]),M=[...sel].filter(p=>!CONN[p]);
+ if(!L.length){say('#pm','Hubungkan minimal satu platform di halaman API.');return}
+ say('#pm','');busy=1;tl();
+ $('#log').innerHTML='<div class="lr"><span>Mengunggah ke server</span><em id="up">0%</em><div class="bar"><i id="ub"></i></div></div>'+L.map(p=>'<div class="lr"><span>'+p+'</span><em id="e-'+p+'">Menunggu</em></div>').join('')+M.map(p=>'<div class="lr"><span>'+p+'</span><em>Belum terhubung</em></div>').join('');
+ try{
+  const up=await sendFile(f);
+  L.forEach(p=>$('#e-'+p).textContent='Memposting…');
+  const r=await rq('/api/post',{uploadId:up.id,caption:$('#cap').value,platforms:L});
+  r.results.forEach(x=>{const e=$('#e-'+x.platform);if(!e)return;e.innerHTML=x.ok?'Tayang'+(/^https:\/\//.test(x.url)?' · <a href="'+esc(x.url)+'" target="_blank" rel="noopener">lihat</a>':'')+(x.note?' · '+esc(x.note):''):esc(x.error||'Gagal')});
+  const n=r.results.filter(x=>x.ok).length;say('#pm',n?'Berhasil Terkirim! Tayang di '+n+' akun sosmedmu':'Tidak ada yang berhasil diposting.',n>0)
+ }catch(e){say('#pm',e.message)}
+ busy=0;tl()};

@@ -1,0 +1,8 @@
+{
+  "name": "satuklik",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "start": "node server/server.js", "test": "node test.js" },
+  "dependencies": { "firebase-admin": "^12.0.0" },
+  "engines": { "node": ">=18" }
+}

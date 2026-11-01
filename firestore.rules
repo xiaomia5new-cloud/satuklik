@@ -1,0 +1,7 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Semua data diakses lewat server (Admin SDK). Klien tidak boleh membaca atau menulis langsung.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
