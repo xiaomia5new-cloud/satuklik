@@ -1,31 +1,23 @@
 # satuklik
 
-Website statis di GitHub Pages, Node.js API terpisah, Authentication + data di Firebase / Firestore.
+Frontend statis di GitHub Pages; API Node.js serverless di Vercel; autentikasi dan data aplikasi memakai Firebase / Firestore.
 
-## Backend hosting (Render)
-1. Buat Firestore database pada project Firebase dan pastikan aturan `firestore.rules` tetap menolak akses langsung dari klien.
-2. Hubungkan repository ini ke Render sebagai Web Service dari `https://render.com/blueprint/new`; Render membaca `render.yaml`.
-3. Isi environment variables di Render (bukan di GitHub):
-   - `FIREBASE_SERVICE_ACCOUNT_JSON`: seluruh JSON service account Firebase Admin SDK (project `satuklik-e0ed2`).
+## Deploy backend ke Vercel
+1. Impor repo `xiaomia5new-cloud/satuklik` melalui https://vercel.com/new dan deploy dari branch `main`.
+2. Di Project Settings → Environment Variables, set:
+   - `FIREBASE_SERVICE_ACCOUNT_JSON`: isi seluruh JSON service account Firebase Admin SDK dari project `satuklik-e0ed2`.
    - `ADMIN_EMAILS`: email admin terverifikasi, mis. `xiaomia5new@gmail.com`.
-   - `PUBLIC_URL`: URL service Render, mis. `https://satuklik-api.onrender.com` (pakai URL yang benar-benar diberikan Render).
-   - `SECRET_KEY` dibuat otomatis oleh blueprint; jangan diubah setelah pengguna menyimpan token platform terenkripsi.
-4. Setelah service berstatus live, tes `https://<alamat-service>/api/health`; hasil yang diharapkan `{"ok":true}`.
-5. Masukkan alamat service tersebut ke `api` di `config.js`, commit perubahan itu, lalu tunggu GitHub Pages terbit ulang.
+   - `SECRET_KEY`: string acak 64 karakter hex. Simpan tetap; menggantinya membuat token platform yang tersimpan tidak dapat didekripsi.
+   - `PUBLIC_URL`: URL production Vercel yang diberikan setelah deployment.
+3. Redeploy setelah mengisi environment variables. Tes `https://<URL-Vercel>/api/health`; seharusnya membalas `{"ok":true}`.
+4. Kirim URL production itu agar nilai `api` pada `config.js` GitHub Pages dapat diisi.
 
-Jangan tempel kredensial service account di chat, repo, atau frontend. Ambil JSON dari Firebase Console > Project settings > Service accounts > Generate new private key dan simpan hanya sebagai environment variable privat di Render.
+**Rahasia:** jangan kirim JSON service account atau `SECRET_KEY` lewat chat, GitHub, atau frontend. Simpan hanya sebagai Environment Variables privat di Vercel. Ambil service-account JSON dari https://console.firebase.google.com/project/satuklik-e0ed2/settings/serviceaccounts/adminsdk.
 
-## Setup Firebase
-- Authentication: aktifkan Email/Password dan Google; tambahkan domain GitHub Pages ke Authorized domains.
-- Firestore: buat database di lokasi pilihan dan terapkan `firestore.rules`.
-- Backend memakai Admin SDK, memverifikasi Firebase ID token yang diterima, dan menyimpan lisensi, pengguna, serta koneksi platform di Firestore.
+## Firebase
+Buat Firestore database di Firebase Console dan terapkan `firestore.rules`. Admin SDK backend memverifikasi Firebase ID token dan menyimpan pengguna, lisensi, serta koneksi platform di Firestore. Google sign-in dan domain GitHub Pages harus aktif pada Firebase Authentication.
 
-## Penting
-- Upload video tetap sementara di disk service selama proses posting (bukan Firestore/Storage); hapus setelah selesai. Free hosting dapat sleep/berbatasan kapasitas, dan unggahan besar mungkin perlu batas lebih rendah atau Storage.
-- Lisensi, koneksi platform, dan token terenkripsi tersimpan di Firestore. Token platform dienkripsi memakai `SECRET_KEY`.
-- Pembelian berbayar belum tersambung; jangan aktifkan `DEMO_PAY` di produksi.
-- Integrasi posting belum diuji dengan token asli; uji per platform dengan akun sendiri.
-- `AUTH_MODE=test` hanya untuk tes lokal, tidak untuk produksi.
+## Batasan Vercel
+Vercel Functions tidak menyediakan disk persisten dan setiap invocation dapat berjalan pada instance berbeda. Karena alur posting saat ini mengunggah video ke disk lokal sementara, **upload/posting video belum dapat diandalkan di Vercel**. Agar fitur posting video berfungsi, upload perlu dipindahkan ke Firebase Storage atau object storage persisten dan endpoint media memakai signed URL. Data Firestore tidak terpengaruh.
 
-## Tes lokal
-`npm install && npm test`
+Pembelian berbayar belum tersambung. Jangan aktifkan `DEMO_PAY` di produksi. Posting per platform belum diverifikasi dengan token asli.
