@@ -1,7 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Semua data diakses lewat server (Admin SDK). Klien tidak boleh membaca atau menulis langsung.
+    // Each signed-in user may access only their own profile document.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Platform credentials are server-only, even for their owner.
+      match /private/{document=**} { allow read, write: if false; }
+    }
+    // Licenses and all other records are accessed only by the trusted backend.
     match /{document=**} { allow read, write: if false; }
   }
 }

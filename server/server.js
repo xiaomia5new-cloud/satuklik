@@ -65,7 +65,7 @@ async function upload(req,res,u,dev){
  if(!n){fs.unlink(f,()=>{});return send(res,400,{error:'File kosong.'})}
  UPL.set(id,{uid:u.id,ext,size:n,mime:MIME[ext],name,at:Date.now()});return send(res,200,{id,size:n})}
 
-http.createServer(async(req,res)=>{
+const app=const app=http.createServer(async(req,res)=>{
  try{
   const p=new URL(req.url,'http://x').pathname;
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','same-origin');
@@ -130,4 +130,6 @@ http.createServer(async(req,res)=>{
    fs.unlink(file,()=>{});UPL.delete(id);return send(res,200,{results})}
   send(res,404,{error:'Tidak ditemukan'})
  }catch(e){console.error(e);if(!res.headersSent)send(res,500,{error:'Kesalahan server'})}
-}).listen(PORT,'0.0.0.0',()=>console.log('satuklik API jalan pada port '+PORT));
+});
+module.exports=app;
+if(require.main===module)app.listen(PORT,'0.0.0.0',()=>console.log('satuklik API jalan pada port '+PORT));

@@ -1,7 +1,3 @@
-// Vercel catch-all function for /api/* and rewritten /media/* requests.
+// Vercel catch-all function for the Node HTTP handler.
 const app = require('../server/server');
-module.exports = (req, res) => {
-  // Vercel rewrites /media/* into /api/media/*; restore the route expected by the app.
-  if (req.url && req.url.startsWith('/api/media/')) req.url = req.url.slice(4);
-  return app(req, res);
-};
+module.exports = (req, res) => app.emit('request', req, res);

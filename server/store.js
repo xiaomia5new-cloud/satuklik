@@ -7,7 +7,7 @@ module.exports=(mode,dir)=>{
   let serviceAccount;try{serviceAccount=JSON.parse(raw)}catch(e){throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON bukan JSON valid.')}
   admin.initializeApp({credential:admin.credential.cert(serviceAccount)});
  }
- const db=admin.firestore(),ref=(c,i)=>db.collection(c).doc(i);
+ const db=admin.firestore(),ref=(c,i)=>c==='conns'?db.collection('users').doc(i).collection('private').doc('connections'):db.collection(c).doc(i);
  return{
   admin,
   async get(c,i){const s=await ref(c,i).get();return s.exists?s.data():null},
