@@ -33,4 +33,6 @@ Instagram Reels, Facebook, dan Threads pada adapter ini mengandalkan `video_url`
 ## Batasan operasional
 D1 REST statement dipanggil melalui Cloudflare API token server-side; token itu tidak boleh diletakkan di GitHub Pages. Cache dan file lokal tidak dipakai sebagai store produksi. Update lisensi memakai conditional update untuk mencegah dua perangkat mengklaim kunci secara bersamaan. Jalankan `npm test` untuk tes lokal. Adapter platform dan CORS browser tetap memerlukan pengujian dengan credential serta akun/platform nyata.
 
-Backend login tetap memakai Firebase Authentication; lisensi, koneksi dan credential tersimpan di Cloudflare D1. Jangan hapus Firestore dulu jika ingin mempertahankan data lama, tetapi aplikasi baru tidak lagi membaca koleksi Firestore. Video YouTube dikirim langsung dari browser ke Google, tanpa melewati penyimpanan backend; platform lainnya belum tersedia untuk direct browser upload.
+## Sisa setup
+1. Buat/deploy backend dengan mengimpor repo ini di https://vercel.com/new .
+Backend login tetap memakai Firebase Authentication; lisensi, koneksi dan credential tersimpan di Cloudflare D1. Jangan hapus Firestore dulu jika ingin mempertahankan data lama, tetapi aplikasi baru tidak lagi membaca koleksi Firestore. Video YouTube dikirim langsung oleh browser ke Google, tanpa melewati penyimpanan backend; platform lainnya belum tersedia untuk direct browser upload.
